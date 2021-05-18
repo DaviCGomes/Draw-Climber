@@ -4,9 +4,6 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 
 public class Player : MonoBehaviour {
-    public float vertexPrecision = 0.1f;
-    public Shader shader;
-
     public bool FirstDraw {
         get;
         set;
@@ -27,77 +24,139 @@ public class Player : MonoBehaviour {
         get;
         set;
     }
-    public GameObject leftL, rightL;
-    public Animator animator;
-
-
-    //public DrawScript drawScript;
+    public Animator Animator {
+        get;
+        set;
+    }
+    public bool IsGrounded {
+        get;
+        set;
+    }
+    public Shader Shader {
+        get;
+        set;
+    }
+    public float VertexPrecision {
+        get;
+        set;
+    }
+    public GameObject LeftL {
+        get;
+        set;
+    }
+    public GameObject RightL {
+        get;
+        set;
+    }
+    public GameObject DrawObject {
+        get;
+        set;
+    }
+    private float Distance {
+        get;
+        set;
+    }
 
     private void Start() {
         Speed = 5f;
         FirstDraw = false;
         Color = new Color(0, 0, 0, 1);
-        animator = GetComponent<Animator>();
+        Distance = 1f;
+        LeftL.GetComponent<Rotation>().Angle = new Vector3(0, 0, -1);
+        LeftL.GetComponent<Rotation>().Speed = 500.0f;
+        LeftL.GetComponent<Rotation>().Rotate = false;
+        RightL.GetComponent<Rotation>().Angle = new Vector3(0, 0, -1);
+        RightL.GetComponent<Rotation>().Speed = 500.0f;
+        RightL.GetComponent<Rotation>().Rotate = false;
     }
 
     // Update is called once per frame
     void Update() {
-        if(Run)
-            animator.SetBool("Run", true);
-        else
-            animator.SetBool("Run", false);
+        if(Run) {
+            LeftL.GetComponent<Rotation>().Rotate = true;
+            RightL.GetComponent<Rotation>().Rotate = true;
+        } else {
+            LeftL.GetComponent<Rotation>().Rotate = false;
+            RightL.GetComponent<Rotation>().Rotate = false;
+        }
         if(Input.GetMouseButtonDown(0)) {
-            
-            if(EventSystem.current.IsPointerOverGameObject()) // Avoid Draw On Ui Element            
+            if(EventSystem.current.IsPointerOverGameObject())
                 StartCoroutine(draw());
+        }
+        CheckGround();
+        if(transform.position.y < 0f) {
+            transform.position = new Vector3(0, 3f, 0);
         }
     }
 
     Vector3 newVertex;
     Vector3 lastVertex;
-    public float colliderThickness;
-
     IEnumerator draw() {
+        Run = false;
+        Distance = 0f;
+
+        DrawnDestroy();
+
         //Setting up the line render
         LineRenderer r = new GameObject().AddComponent<LineRenderer>();
         r.transform.SetParent(transform);
-        r.startWidth = 1f;
-        r.endWidth = 1f;
-        r.material = new Material(shader);
+        r.startWidth = 0.3f;
+        r.endWidth = 0.3f;
+        r.material = new Material(Shader);
         r.material.color = Color;
+        r.gameObject.tag = "Line";
 
-        List<Vector3> posiciones = new List<Vector3>();
+        List<Vector3> positions = new List<Vector3>();
 
-        while(Input.GetMouseButton(0)) // Adding Mouse Points To Line Render
-        {
+        while(Input.GetMouseButton(0)){ // Adding Mouse Points To Line Render
             newVertex = Camera.main.ScreenToWorldPoint(Input.mousePosition) + Vector3.forward * 5;
-            if(Vector3.Distance(lastVertex, newVertex) >= vertexPrecision) //Checking distance between vertx
-            {
-                posiciones.Add(newVertex);
-                r.positionCount = posiciones.Count;
-                r.SetPositions(posiciones.ToArray());
+            if(Vector3.Distance(lastVertex, newVertex) >= VertexPrecision){ //Checking distance between vertx
+                positions.Add(newVertex);
+                r.positionCount = positions.Count;
+                r.SetPositions(positions.ToArray());
                 lastVertex = newVertex;
             }
             yield return new WaitForEndOfFrame();
         }
 
         r.useWorldSpace = false;
+        Vector3 aux = positions[0];
+        for(int i = 0; i < positions.Count; i++) {
+            Instantiate(DrawObject, new Vector3(((positions[i].x - aux.x)/2f) + transform.position.x , ((positions[i].y - aux.y) / 2f) + transform.position.y, LeftL.transform.position.z), new Quaternion(), LeftL.transform);
+            Instantiate(DrawObject, new Vector3(((aux.x - positions[i].x)/2f) + transform.position.x , (((aux.y - positions[i].y) / 2f) + transform.position.y), RightL.transform.position.z), new Quaternion(), RightL.transform);
+            if(positions[i].y < 0)
+                if(positions[i].y < Distance)
+                    Distance = positions[i].y;
+        }
 
-        //if (usePhysics){ // Add Physics to line render
-            List<Vector2> posiciones2 = new List<Vector2>();
-
-            for (int i = 0; i < posiciones.Count; i++) // Forward position to add
-                posiciones2.Add(new Vector2(posiciones[i].x, posiciones[i].y));
-
-            for (int i = posiciones.Count - 1; i > 0; i--) //Backward position to add
-                posiciones2.Add(new Vector2(posiciones[i].x, posiciones[i].y + colliderThickness));
-
-            leftL = r.gameObject;
-        rightL = r.gameObject;
-        //PolygonCollider2D col = r.gameObject.AddComponent<PolygonCollider2D>();
-        //col.points = posiciones2.ToArray();
-        //col.gameObject.AddComponent<Rigidbody2D>();
-        //}
+        Distance = ((Distance - aux.y) / 2) + transform.position.y;
         Run = true;
+    }
+
+    private void CheckGround() {
+        Vector3 origin = new Vector3(transform.position.x, transform.position.y - (transform.localScale.y * .5f), transform.position.z);
+        Vector3 direction = transform.TransformDirection(1f,-1f,0);
+
+        Debug.DrawRay(origin, direction * Distance, Color.red);
+        if(Physics.Raycast(origin, direction, out RaycastHit hit, Distance)) {
+            IsGrounded = true;
+        } else {
+            IsGrounded = false;
+        }
+    }
+
+    private void DrawnDestroy() {
+        GameObject[] game = GameObject.FindGameObjectsWithTag("DrawnObject");
+        if(game != null) {
+            foreach(GameObject dO in game) {
+                Destroy(dO.gameObject);
+            }
+        }
+        game = GameObject.FindGameObjectsWithTag("Line");
+        if(game != null) {
+            foreach(GameObject dO in game) {
+                Destroy(dO.gameObject);
+            }
+        }
     }
 }
